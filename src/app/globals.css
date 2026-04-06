@@ -1,0 +1,154 @@
+@import "tailwindcss";
+
+/* ─── NFS Heat / Unbound Design Tokens ─────────────────────────────────── */
+@theme {
+  /* Colors */
+  --color-nfs-black:  #0a0a0f;
+  --color-nfs-dark:   #12121a;
+  --color-nfs-panel:  #1a1a28;
+  --color-nfs-card:   #1e1e2e;
+  --color-nfs-border: #2a2a3d;
+  --color-nfs-orange: #FF6B00;
+  --color-nfs-cyan:   #00D4FF;
+  --color-nfs-green:  #00FF87;
+  --color-nfs-red:    #FF2D55;
+  --color-nfs-text:   #e0e0f0;
+  --color-nfs-muted:  #6b6b8a;
+
+  /* Typography */
+  --font-display: "Barlow Condensed", sans-serif;
+  --font-body:    "Barlow", sans-serif;
+}
+
+/* ─── Base Reset ────────────────────────────────────────────────────────── */
+:root {
+  --background: #0a0a0f;
+  --foreground: #e0e0f0;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: "Barlow", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ─── Custom Scrollbar ──────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+::-webkit-scrollbar-track {
+  background: #12121a;
+}
+::-webkit-scrollbar-thumb {
+  background: #FF6B00;
+  border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #ff8c33;
+}
+
+/* ─── Neon Glow Utilities ───────────────────────────────────────────────── */
+.neon-glow-orange {
+  box-shadow:
+    0 0 6px rgba(255, 107, 0, 0.6),
+    0 0 20px rgba(255, 107, 0, 0.3),
+    0 0 40px rgba(255, 107, 0, 0.1);
+}
+
+.neon-glow-cyan {
+  box-shadow:
+    0 0 6px rgba(0, 212, 255, 0.6),
+    0 0 20px rgba(0, 212, 255, 0.3),
+    0 0 40px rgba(0, 212, 255, 0.1);
+}
+
+.neon-border-orange {
+  border-color: #FF6B00;
+  box-shadow: 0 0 8px rgba(255, 107, 0, 0.4), inset 0 0 8px rgba(255, 107, 0, 0.05);
+}
+
+.neon-border-cyan {
+  border-color: #00D4FF;
+  box-shadow: 0 0 8px rgba(0, 212, 255, 0.4), inset 0 0 8px rgba(0, 212, 255, 0.05);
+}
+
+/* ─── Glassmorphism Panel ───────────────────────────────────────────────── */
+.glass-panel {
+  background: rgba(26, 26, 40, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(42, 42, 61, 0.8);
+}
+
+/* ─── Speed Lines Background ────────────────────────────────────────────── */
+.speed-lines {
+  background-image: repeating-linear-gradient(
+    -55deg,
+    transparent,
+    transparent 2px,
+    rgba(255, 107, 0, 0.015) 2px,
+    rgba(255, 107, 0, 0.015) 4px
+  );
+}
+
+/* ─── Shake Animation (auth error) ─────────────────────────────────────── */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  15%       { transform: translateX(-8px); }
+  30%       { transform: translateX(8px); }
+  45%       { transform: translateX(-6px); }
+  60%       { transform: translateX(6px); }
+  75%       { transform: translateX(-4px); }
+  90%       { transform: translateX(4px); }
+}
+
+.shake {
+  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+/* ─── Slide-Up Fade-In (modal entry) ───────────────────────────────────── */
+@keyframes slideUpFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-up {
+  animation: slideUpFadeIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ─── Sweep-In (card reveal) ───────────────────────────────────────────── */
+@keyframes sweepIn {
+  from {
+    opacity: 0;
+    transform: translateX(-16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.sweep-in {
+  animation: sweepIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* ─── Pulse Glow (status badge) ────────────────────────────────────────── */
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.6; }
+}
+
+.pulse-glow {
+  animation: pulseGlow 2s ease-in-out infinite;
+}
