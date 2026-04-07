@@ -59,8 +59,8 @@ export async function POST(req: NextRequest) {
     const payload = JSON.stringify({
       title: "New Task Assigned",
       body: bodyText,
-      icon: "/icon-192x192.png", // Matches your sw.js and public folder
-      badge: "/icon-192x192.png",
+      icon: "/icon-192.png", // Matches your sw.js and public folder
+      badge: "/icon-192.png",
       tag: "task-update",        // Prevents notification stacking
       renotify: true,            // Alerts even if a previous one is visible
       data: { recipientId: cleanRecipientId },
