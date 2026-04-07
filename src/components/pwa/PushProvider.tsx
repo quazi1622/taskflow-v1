@@ -25,72 +25,73 @@ export function usePush() {
   return useContext(PushContext);
 }
 
-interface Props {
-  userId: string;
-  children: ReactNode;
-}
-
-export function PushProvider({ userId, children }: Props) {
-  const subscribed = useRef(false);
+export function PushProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const setupAttempted = useRef(false);
 
   useEffect(() => {
-    if (subscribed.current) return;
+    if (setupAttempted.current || typeof window === "undefined") return;
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-    if (!VAPID_PUBLIC_KEY) {
-      console.warn("[Push] NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set.");
-      return;
-    }
 
-    async function setup() {
+    const setupPush = async () => {
       try {
-        // 1. Register service worker
-        const registration = await navigator.serviceWorker.register("/sw.js", {
-          scope: "/",
-          updateViaCache: "none",
-        });
-
-        await navigator.serviceWorker.ready;
-
-        // 2. Check for existing subscription first
+        const registration = await navigator.serviceWorker.ready;
+        
+        // 1. Check for existing subscription
         let subscription = await registration.pushManager.getSubscription();
 
-        if (!subscription) {
-          // 3. Request permission
-          const permission = await Notification.requestPermission();
-          if (permission !== "granted") {
-            console.log("[Push] Notification permission denied.");
-            return;
-          }
+        // 2. The Auto-Request Logic (Triggered on first screen tap)
+        const requestAndSave = async () => {
+          try {
+            const permission = await Notification.permission;
+            
+            // If already denied, we can't show the popup; just exit
+            if (permission === "denied") return;
 
-          // 4. Subscribe with VAPID key
-          subscription = await registration.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as unknown as BufferSource,
+            const newPermission = await Notification.requestPermission();
+            if (newPermission !== "granted") return;
+
+            // FIX: Explicitly cast to 'any' to bypass the SharedArrayBuffer type mismatch
+            subscription = await registration.pushManager.subscribe({
+              userVisibleOnly: true,
+              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!) as any,
+            });
+
+            await fetch("/api/push/subscribe", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId, subscription: subscription.toJSON() }),
+            });
+            
+            console.log("[Push] Auto-subscribed successful for:", userId);
+          } catch (err) {
+            console.error("[Push] Interaction request failed:", err);
+          }
+        };
+
+        if (!subscription) {
+          // Listen for the very first click on the window to trigger the popup
+          window.addEventListener("click", requestAndSave, { once: true });
+        } else {
+          // If already subscribed, refresh the DB entry silently
+          await fetch("/api/push/subscribe", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId, subscription: subscription.toJSON() }),
           });
         }
-
-        // 5. Save subscription to Supabase via API
-        await fetch("/api/push/subscribe", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId, subscription }),
-        });
-
-        subscribed.current = true;
-        console.log("[Push] Subscription active for:", userId);
+        
+        setupAttempted.current = true;
       } catch (err) {
-        console.error("[Push] Setup failed:", err);
+        console.error("[Push] Setup error:", err);
       }
-    }
+    };
 
-    setup();
+    setupPush();
+    
+    return () => window.removeEventListener("click", () => {});
   }, [userId]);
 
-  async function sendTaskNotification(
-    recipientId: string,
-    description: string,
-    deadline?: string | null
-  ) {
+  async function sendTaskNotification(recipientId: string, description: string, deadline?: string | null) {
     try {
       await fetch("/api/push/send", {
         method: "POST",
@@ -98,7 +99,7 @@ export function PushProvider({ userId, children }: Props) {
         body: JSON.stringify({ recipientId, description, deadline }),
       });
     } catch (err) {
-      console.error("[Push] Failed to send notification:", err);
+      console.error("[Push] API call failed:", err);
     }
   }
 
