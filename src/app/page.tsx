@@ -82,12 +82,12 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, tasks: m.tasks.filter(t => t.id !== taskId) } : m));
       alert(`Database rejected assignment: ${error.message}`);
     } else {
-      // Trigger Notification if Lead assigns to AAN
-      if (isLead && memberId.toUpperCase() === "AAN") {
+      // Notification Logic: Notify AAN if the recipient is AAN and user is Lead/Boss
+      if (memberId.toUpperCase() === "AAN" && isBossOrLead) {
         sendTaskNotification(
           "AAN",
           "New Task Assigned!",
-          `Lead ${user.initial} assigned: ${description}`
+          `${user.initial} assigned: ${description}`
         );
       }
     }
@@ -116,7 +116,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
       .single();
 
     if (error) {
-      console.error("[TaskFlow] Edit Error:", error.message);
       alert(`Update failed: ${error.message}`);
       window.location.reload(); 
     } else if (data) {
@@ -130,7 +129,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
         } : t)
       })));
 
-      // Trigger Notification if Lead edits AAN's task
       if (task.assigned_to?.toUpperCase() === "AAN") {
         sendTaskNotification(
           "AAN",
@@ -183,7 +181,11 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   async function handleDeleteTask(taskId: string) {
     if (!isLead) return;
     setMembers(prev => prev.map(m => ({ ...m, tasks: m.tasks.filter(t => t.id !== taskId) })));
-    await supabase.from("tasks").delete().eq("tasks", taskId);
+    const { error } = await supabase.from("tasks").delete().eq("tasks", taskId);
+    if (error) {
+      alert(`Delete failed: ${error.message}`);
+      window.location.reload();
+    }
   }
 
   async function handleMoveTask(taskId: string, toMemberId: string) {
@@ -280,7 +282,8 @@ function BoardPage() {
   if (membersLoading) return <LoadingScreen />;
 
   return (
-    <PushProvider userId={user.id}>
+    // FIX: Passing user.initial instead of user.id to match the DB column
+    <PushProvider userId={user.initial}>
       <BoardShell user={user} logout={logout} members={members} setMembers={setMembers} />
     </PushProvider>
   );
