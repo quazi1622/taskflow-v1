@@ -1,24 +1,26 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Initialize Supabase with the SERVICE_ROLE_KEY for admin overrides
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY! // MUST use Service Role Key
+  process.env.SUPABASE_SERVICE_ROLE_KEY! 
 );
 
 export async function POST(req: NextRequest) {
   try {
     const { userId, subscription } = await req.json();
 
-    // userId must be "AAN", "NZZ", etc.
+    // userId should be initials like "AAN", "NZZ", etc.
     const cleanId = userId?.trim().toUpperCase();
 
     console.log(`[Push API] Attempting update for user: ${cleanId}`);
 
+    // Update the push_subscription column in the users table
     const { data, error } = await supabase
       .from("users")
       .update({ push_subscription: subscription }) 
-      .eq("users", cleanId) // Matches your 'users' column initials
+      .eq("users", cleanId) 
       .select();
 
     if (error) throw error;
