@@ -1,23 +1,14 @@
 "use client";
 
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  ReactNode,
-} from "react";
+import { createContext, useContext, useEffect, useRef, useState, ReactNode } from "react";
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "@/lib/push";
 
 interface PushContextValue {
   permission: NotificationPermission;
+  isSubscribed: boolean; // NEW: Tracks if the DB has a record
   enablePush: () => Promise<void>;
-  sendTaskNotification: (
-    recipientId: string,
-    description: string,
-    deadline?: string | null
-  ) => Promise<void>;
+  disablePush: () => Promise<void>; // NEW: Ability to unsubscribe
+  sendTaskNotification: (recipientId: string, description: string, deadline?: string | null) => Promise<void>;
 }
 
 const PushContext = createContext<PushContextValue | null>(null);
@@ -30,85 +21,78 @@ export function usePush() {
 
 export function PushProvider({ userId, children }: { userId: string; children: ReactNode }) {
   const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [isSubscribed, setIsSubscribed] = useState(false);
   const setupAttempted = useRef(false);
 
-  // Sync initial permission state
+  // 1. Initial State Sync
   useEffect(() => {
     if (typeof window !== "undefined" && "Notification" in window) {
       setPermission(Notification.permission);
     }
   }, []);
 
-  const subscribeUser = async (registration: ServiceWorkerRegistration) => {
-    try {
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!) as any,
-      });
-
-      await fetch("/api/push/subscribe", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, subscription: sub.toJSON() }),
-      });
-
-      console.log("[Push] Subscription synced for:", userId);
-    } catch (err) {
-      console.error("[Push] Subscription failed:", err);
-    }
+  // 2. Helper: Sync with Supabase
+  const updateDbSubscription = async (sub: PushSubscription | null) => {
+    await fetch("/api/push/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId, subscription: sub ? sub.toJSON() : null }),
+    });
+    setIsSubscribed(!!sub);
   };
 
   useEffect(() => {
     if (setupAttempted.current || typeof window === "undefined") return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
-
     const setup = async () => {
       try {
-        await navigator.serviceWorker.register("/sw.js", { scope: "/" });
         const registration = await navigator.serviceWorker.ready;
-
-        // If permission is already granted, refresh the subscription silently
-        if (Notification.permission === "granted") {
-          const existingSub = await registration.pushManager.getSubscription();
-          if (existingSub) {
-            await subscribeUser(registration);
-          }
+        const sub = await registration.pushManager.getSubscription();
+        setIsSubscribed(!!sub);
+        
+        // Auto-refresh DB if already granted
+        if (Notification.permission === "granted" && sub) {
+          await updateDbSubscription(sub);
         }
         setupAttempted.current = true;
-      } catch (err) {
-        console.error("[Push] SW Setup error:", err);
-      }
+      } catch (err) { console.error("[Push] Setup error:", err); }
     };
-
     setup();
   }, [userId]);
 
+  // 3. Logic: Enable
   const enablePush = async () => {
-    if (!("Notification" in window)) return;
-
     const result = await Notification.requestPermission();
     setPermission(result);
-
     if (result === "granted") {
       const registration = await navigator.serviceWorker.ready;
-      await subscribeUser(registration);
+      const sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!) as any,
+      });
+      await updateDbSubscription(sub);
+    }
+  };
+
+  // 4. Logic: Disable (The Toggle Off)
+  const disablePush = async () => {
+    const registration = await navigator.serviceWorker.ready;
+    const sub = await registration.pushManager.getSubscription();
+    if (sub) {
+      await sub.unsubscribe(); // Kill it in the browser
+      await updateDbSubscription(null); // Kill it in Supabase
     }
   };
 
   async function sendTaskNotification(recipientId: string, description: string, deadline?: string | null) {
-    try {
-      await fetch("/api/push/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ recipientId, description, deadline }),
-      });
-    } catch (err) {
-      console.error("[Push] API call failed:", err);
-    }
+    await fetch("/api/push/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recipientId, description, deadline }),
+    });
   }
 
   return (
-    <PushContext.Provider value={{ permission, enablePush, sendTaskNotification }}>
+    <PushContext.Provider value={{ permission, isSubscribed, enablePush, disablePush, sendTaskNotification }}>
       {children}
     </PushContext.Provider>
   );

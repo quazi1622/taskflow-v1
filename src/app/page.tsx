@@ -21,45 +21,42 @@ export function fromDbStatus(dbStatus: string): TaskStatus {
   return "assigned";
 }
 
-// ─── Notification Permission Banner ─────────────────────────────────────────
-/**
- * This component triggers the permission popup via a user-initiated click.
- * This is the standard way to bypass browser "silent blocking".
- */
-function NotificationBanner() {
-  const { permission, enablePush } = usePush();
-
-  // If the user has already allowed or blocked, hide the banner
-  if (permission !== "default") return null;
+// ─── Persistent Push Toggle UI ──────────────────────────────────────────────
+function PushToggle() {
+  const { permission, isSubscribed, enablePush, disablePush } = usePush();
+  const isBlocked = permission === "denied";
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-4">
+    <div className="fixed bottom-6 right-6 z-[9999]">
       <div 
-        className="rounded-xl p-4 flex items-center justify-between gap-4 border backdrop-blur-md"
+        className="glass-panel p-3 rounded-xl border flex flex-col gap-2 min-w-[150px] backdrop-blur-md"
         style={{
           background: "rgba(10, 10, 15, 0.9)",
-          borderColor: "rgba(0, 212, 255, 0.4)",
-          boxShadow: "0 0 30px rgba(0, 212, 255, 0.15)",
+          borderColor: isBlocked ? "rgba(255, 0, 0, 0.3)" : "rgba(0, 212, 255, 0.3)",
+          boxShadow: isSubscribed ? "0 0 20px rgba(0, 212, 255, 0.1)" : "none"
         }}
       >
-        <div className="flex gap-3 items-center">
-          <div className="w-1 h-8 bg-[#00D4FF] rounded-full shadow-[0_0_8px_#00D4FF]" />
-          <div>
-            <h4 className="text-[10px] font-black tracking-[0.2em] text-[#00D4FF] uppercase">
-              System Alert
-            </h4>
-            <p className="text-[11px] text-[#6b6b8a] uppercase tracking-wider font-bold">
-              Enable push alerts for tasks
-            </p>
-          </div>
+        <div className="flex flex-col">
+          <span className="text-[9px] font-black uppercase text-[#6b6b8a] tracking-[0.15em]">
+            System Alerts
+          </span>
+          <span className={`text-[10px] font-bold uppercase tracking-wider ${isSubscribed ? 'text-[#00D4FF]' : 'text-white/30'}`}>
+            {isBlocked ? "Blocked by Browser" : isSubscribed ? "Active" : "Disabled"}
+          </span>
         </div>
 
-        <button
-          onClick={enablePush}
-          className="px-4 py-2 bg-transparent border border-[#00D4FF] text-[#00D4FF] text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-[#00D4FF] hover:text-black transition-all duration-300 active:scale-95"
-        >
-          Enable
-        </button>
+        {!isBlocked && (
+          <button
+            onClick={isSubscribed ? disablePush : enablePush}
+            className={`w-full h-7 rounded-lg border text-[9px] font-black uppercase tracking-[0.2em] transition-all duration-300 active:scale-95 ${
+              isSubscribed 
+                ? 'bg-[#00D4FF]/10 border-[#00D4FF] text-[#00D4FF] shadow-[0_0_10px_rgba(0,212,255,0.2)]' 
+                : 'bg-white/5 border-white/10 text-white/40'
+            }`}
+          >
+            {isSubscribed ? "Mute" : "Enable"}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -95,6 +92,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   const isMember = user.role === "member";
   const isBossOrLead = isBoss || isLead;
 
+  // 1. Handle Assign Task (With Push Notification)
   async function handleAssignTask(memberId: string, description: string, deadline: string | null) {
     if (!isBossOrLead) return;
 
@@ -127,6 +125,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
+  // 2. Handle Edit Task (With Lead Check & Edit Count restriction)
   async function handleEditTask(task: Task, description: string, deadline: string | null) {
     if (!isLead) {
       alert("Unauthorized: Only the Team Lead can modify task details.");
@@ -154,15 +153,12 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     } else if (data) {
       const recipient = task.assigned_to?.toUpperCase();
       if (recipient && recipient !== user.initial?.toUpperCase()) {
-        sendTaskNotification(
-          recipient,
-          `Task Details Updated: ${description}`,
-          deadline
-        );
+        sendTaskNotification(recipient, `Task Updated: ${description}`, deadline);
       }
     }
   }
 
+  // 3. Handle Status Change (With Ownership Verification)
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     if (isLead) {
       alert("Unauthorized: Team Leads cannot modify task status.");
@@ -192,6 +188,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
+  // 4. Delete & Move Logic
   async function handleDeleteTask(taskId: string) {
     if (!isLead) return;
     const { error } = await supabase.from("tasks").delete().eq("tasks", taskId);
@@ -209,11 +206,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
 
   return (
     <>
-      {/* Injecting the Banner here ensures it has access to usePush 
-        but lives independently of the Kanban board's scrolling.
-      */}
-      <NotificationBanner />
-
+      <PushToggle />
       <KanbanBoard
         members={members}
         viewerRole={user.role}
@@ -239,7 +232,6 @@ function BoardPage() {
 
   const fetchData = useCallback(async () => {
     if (!user || !isSupabaseConfigured) return;
-    
     try {
       const { data: userData, error: userError } = await supabase
         .from("users")
@@ -249,10 +241,7 @@ function BoardPage() {
 
       if (userError) throw userError;
 
-      const { data: tasksData, error: tasksError } = await supabase
-        .from("tasks")
-        .select("*");
-
+      const { data: tasksData, error: tasksError } = await supabase.from("tasks").select("*");
       if (tasksError) throw tasksError;
 
       const today = new Date().toISOString().split("T")[0];
@@ -287,19 +276,9 @@ function BoardPage() {
   useEffect(() => {
     if (!user) return;
     fetchData();
-
-    const channel = supabase
-      .channel("board-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks" },
-        () => fetchData()
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const channel = supabase.channel("board-realtime").on("postgres_changes", 
+      { event: "*", schema: "public", table: "tasks" }, fetchData).subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, [user, fetchData]);
 
   if (!user) return <AuthModal />;
