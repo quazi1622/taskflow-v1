@@ -21,6 +21,50 @@ export function fromDbStatus(dbStatus: string): TaskStatus {
   return "assigned";
 }
 
+// ─── Notification Permission Banner ─────────────────────────────────────────
+/**
+ * This component triggers the permission popup via a user-initiated click.
+ * This is the standard way to bypass browser "silent blocking".
+ */
+function NotificationBanner() {
+  const { permission, enablePush } = usePush();
+
+  // If the user has already allowed or blocked, hide the banner
+  if (permission !== "default") return null;
+
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] w-full max-w-md px-4">
+      <div 
+        className="rounded-xl p-4 flex items-center justify-between gap-4 border backdrop-blur-md"
+        style={{
+          background: "rgba(10, 10, 15, 0.9)",
+          borderColor: "rgba(0, 212, 255, 0.4)",
+          boxShadow: "0 0 30px rgba(0, 212, 255, 0.15)",
+        }}
+      >
+        <div className="flex gap-3 items-center">
+          <div className="w-1 h-8 bg-[#00D4FF] rounded-full shadow-[0_0_8px_#00D4FF]" />
+          <div>
+            <h4 className="text-[10px] font-black tracking-[0.2em] text-[#00D4FF] uppercase">
+              System Alert
+            </h4>
+            <p className="text-[11px] text-[#6b6b8a] uppercase tracking-wider font-bold">
+              Enable push alerts for tasks
+            </p>
+          </div>
+        </div>
+
+        <button
+          onClick={enablePush}
+          className="px-4 py-2 bg-transparent border border-[#00D4FF] text-[#00D4FF] text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-[#00D4FF] hover:text-black transition-all duration-300 active:scale-95"
+        >
+          Enable
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Loading Screen UI ──────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
@@ -51,7 +95,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   const isMember = user.role === "member";
   const isBossOrLead = isBoss || isLead;
 
-  // 1. Handle Assign Task (Dynamic Notification for any Member)
   async function handleAssignTask(memberId: string, description: string, deadline: string | null) {
     if (!isBossOrLead) return;
 
@@ -74,7 +117,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     if (error) {
       alert(`Database rejected assignment: ${error.message}`);
     } else {
-      // DYNAMIC NOTIFICATION: Notify recipient if it's not the current user
       if (recipient !== user.initial?.toUpperCase()) {
         sendTaskNotification(
           recipient, 
@@ -85,7 +127,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
-  // 2. Handle Edit Task (Dynamic Notification for any Member)
   async function handleEditTask(task: Task, description: string, deadline: string | null) {
     if (!isLead) {
       alert("Unauthorized: Only the Team Lead can modify task details.");
@@ -112,8 +153,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
       window.location.reload(); 
     } else if (data) {
       const recipient = task.assigned_to?.toUpperCase();
-      
-      // DYNAMIC NOTIFICATION: Notify owner of the change
       if (recipient && recipient !== user.initial?.toUpperCase()) {
         sendTaskNotification(
           recipient,
@@ -124,7 +163,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
-  // 3. Handle Status Change
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     if (isLead) {
       alert("Unauthorized: Team Leads cannot modify task status.");
@@ -133,7 +171,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
 
     const currentMemberCol = members.find(m => m.tasks.some(t => t.id === taskId));
     const targetTask = currentMemberCol?.tasks.find(t => t.id === taskId);
-
     if (!targetTask) return;
 
     const myInitial = user.initial?.trim().toUpperCase();
@@ -155,7 +192,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
-  // 4. Delete & Move Logic
   async function handleDeleteTask(taskId: string) {
     if (!isLead) return;
     const { error } = await supabase.from("tasks").delete().eq("tasks", taskId);
@@ -172,19 +208,26 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   }
 
   return (
-    <KanbanBoard
-      members={members}
-      viewerRole={user.role}
-      viewerId={user.id}
-      viewerInitial={user.initial}
-      canDelete={isLead}
-      onLogout={logout}
-      onAssignTask={handleAssignTask}
-      onEditTask={handleEditTask}
-      onDeleteTask={handleDeleteTask}
-      onMoveTask={handleMoveTask}
-      onStatusChange={handleStatusChange}
-    />
+    <>
+      {/* Injecting the Banner here ensures it has access to usePush 
+        but lives independently of the Kanban board's scrolling.
+      */}
+      <NotificationBanner />
+
+      <KanbanBoard
+        members={members}
+        viewerRole={user.role}
+        viewerId={user.id}
+        viewerInitial={user.initial}
+        canDelete={isLead}
+        onLogout={logout}
+        onAssignTask={handleAssignTask}
+        onEditTask={handleEditTask}
+        onDeleteTask={handleDeleteTask}
+        onMoveTask={handleMoveTask}
+        onStatusChange={handleStatusChange}
+      />
+    </>
   );
 }
 
@@ -194,7 +237,6 @@ function BoardPage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Centralized data fetcher
   const fetchData = useCallback(async () => {
     if (!user || !isSupabaseConfigured) return;
     
@@ -242,7 +284,6 @@ function BoardPage() {
     }
   }, [user]);
 
-  // Realtime Subscription: Refresh UI whenever 'tasks' table changes
   useEffect(() => {
     if (!user) return;
     fetchData();
@@ -265,7 +306,6 @@ function BoardPage() {
   if (loading) return <LoadingScreen />;
 
   return (
-    // Pass user.initial (e.g., "AAN") to match the DB column exactly
     <PushProvider userId={user.initial.toUpperCase()}>
       <BoardShell user={user} logout={logout} members={members} setMembers={setMembers} />
     </PushProvider>

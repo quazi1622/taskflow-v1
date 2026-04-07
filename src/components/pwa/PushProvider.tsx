@@ -5,11 +5,14 @@ import {
   useContext,
   useEffect,
   useRef,
+  useState,
   ReactNode,
 } from "react";
 import { VAPID_PUBLIC_KEY, urlBase64ToUint8Array } from "@/lib/push";
 
 interface PushContextValue {
+  permission: NotificationPermission;
+  enablePush: () => Promise<void>;
   sendTaskNotification: (
     recipientId: string,
     description: string,
@@ -17,120 +20,95 @@ interface PushContextValue {
   ) => Promise<void>;
 }
 
-const PushContext = createContext<PushContextValue>({
-  sendTaskNotification: async () => {},
-});
+const PushContext = createContext<PushContextValue | null>(null);
 
 export function usePush() {
-  return useContext(PushContext);
+  const ctx = useContext(PushContext);
+  if (!ctx) throw new Error("usePush must be used within a PushProvider");
+  return ctx;
 }
 
 export function PushProvider({ userId, children }: { userId: string; children: ReactNode }) {
+  const [permission, setPermission] = useState<NotificationPermission>("default");
   const setupAttempted = useRef(false);
 
+  // Sync initial permission state
   useEffect(() => {
-    // 1. Safety Checks: Only run in browser and don't run twice
-    if (setupAttempted.current || typeof window === "undefined") return;
-    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-      console.warn("[Push] Browser does not support Web Push.");
-      return;
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setPermission(Notification.permission);
     }
+  }, []);
 
-    const setupPush = async () => {
+  const subscribeUser = async (registration: ServiceWorkerRegistration) => {
+    try {
+      const sub = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!) as any,
+      });
+
+      await fetch("/api/push/subscribe", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, subscription: sub.toJSON() }),
+      });
+
+      console.log("[Push] Subscription synced for:", userId);
+    } catch (err) {
+      console.error("[Push] Subscription failed:", err);
+    }
+  };
+
+  useEffect(() => {
+    if (setupAttempted.current || typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+
+    const setup = async () => {
       try {
-        // 2. REGISTER the Service Worker (Crucial: This looks for /public/sw.js)
         await navigator.serviceWorker.register("/sw.js", { scope: "/" });
-        
-        // 3. WAIT for the worker to be ready
         const registration = await navigator.serviceWorker.ready;
-        
-        // 4. Check for existing subscription
-        let subscription = await registration.pushManager.getSubscription();
 
-        // 5. The Auto-Request Logic (Triggered on first screen tap)
-        const requestAndSave = async () => {
-          try {
-            const permission = await Notification.permission;
-            
-            // If already denied, we can't show the popup; just exit
-            if (permission === "denied") {
-              console.warn("[Push] Permission denied. Check browser settings.");
-              return;
-            }
-
-            const newPermission = await Notification.requestPermission();
-            if (newPermission !== "granted") return;
-
-            // FIX: Explicitly cast to 'any' to bypass the SharedArrayBuffer type mismatch
-            subscription = await registration.pushManager.subscribe({
-              userVisibleOnly: true,
-              applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY!) as any,
-            });
-
-            // Save the subscription to Supabase via your API
-            await fetch("/api/push/subscribe", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ 
-                userId, 
-                subscription: subscription.toJSON() 
-              }),
-            });
-            
-            console.log("[Push] Auto-subscribed successful for:", userId);
-          } catch (err) {
-            console.error("[Push] Interaction request failed:", err);
+        // If permission is already granted, refresh the subscription silently
+        if (Notification.permission === "granted") {
+          const existingSub = await registration.pushManager.getSubscription();
+          if (existingSub) {
+            await subscribeUser(registration);
           }
-        };
-
-        if (!subscription) {
-          // Listen for the very first click on the window to trigger the popup
-          console.log("[Push] Waiting for first click to request permission...");
-          window.addEventListener("click", requestAndSave, { once: true });
-        } else {
-          // If already subscribed, refresh the DB entry silently to prevent NULL columns
-          console.log("[Push] Refreshing existing subscription for:", userId);
-          await fetch("/api/push/subscribe", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ 
-              userId, 
-              subscription: subscription.toJSON() 
-            }),
-          });
         }
-        
         setupAttempted.current = true;
       } catch (err) {
-        console.error("[Push] Setup error:", err);
+        console.error("[Push] SW Setup error:", err);
       }
     };
 
-    setupPush();
-    
-    // Cleanup: Remove listener if component unmounts before click
-    return () => window.removeEventListener("click", () => {});
+    setup();
   }, [userId]);
 
-  /**
-   * Function used by the Kanban Board to trigger a notification
-   * to a specific recipient (e.g., "MPM")
-   */
+  const enablePush = async () => {
+    if (!("Notification" in window)) return;
+
+    const result = await Notification.requestPermission();
+    setPermission(result);
+
+    if (result === "granted") {
+      const registration = await navigator.serviceWorker.ready;
+      await subscribeUser(registration);
+    }
+  };
+
   async function sendTaskNotification(recipientId: string, description: string, deadline?: string | null) {
     try {
-      const res = await fetch("/api/push/send", {
+      await fetch("/api/push/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ recipientId, description, deadline }),
       });
-      if (!res.ok) console.error("[Push] Failed to trigger send API");
     } catch (err) {
       console.error("[Push] API call failed:", err);
     }
   }
 
   return (
-    <PushContext.Provider value={{ sendTaskNotification }}>
+    <PushContext.Provider value={{ permission, enablePush, sendTaskNotification }}>
       {children}
     </PushContext.Provider>
   );
