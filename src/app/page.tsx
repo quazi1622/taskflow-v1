@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 import AuthModal from "@/components/auth/AuthModal";
 import KanbanBoard from "@/components/board/KanbanBoard";
@@ -51,27 +51,20 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   const isMember = user.role === "member";
   const isBossOrLead = isBoss || isLead;
 
-  // 1. Handle Assign Task (With Push Logic)
+  // 1. Handle Assign Task (Dynamic Notification for any Member)
   async function handleAssignTask(memberId: string, description: string, deadline: string | null) {
     if (!isBossOrLead) return;
 
     const taskId = crypto.randomUUID();
     const today = new Date().toISOString().split("T")[0];
     const deadlineDate = deadline ? deadline.split("T")[0] : null;
-
-    const newTask: Task = {
-      id: taskId, assigned_to: memberId, description, deadline: deadline ?? null,
-      status: "assigned", edit_count: 0, priority: Date.now(), 
-      created_at: today, updated_at: today,
-    };
-
-    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, tasks: [...m.tasks, newTask] } : m));
+    const recipient = memberId.trim().toUpperCase();
 
     const { error } = await supabase.from("tasks").insert({
       tasks: taskId,
       task_desc: description,
       created_at: today,
-      assigned_to: memberId,
+      assigned_to: recipient,
       status: toDbStatus("assigned"),
       deadline: deadlineDate,
       created_by: user.initial, 
@@ -79,21 +72,20 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     });
 
     if (error) {
-      setMembers(prev => prev.map(m => m.id === memberId ? { ...m, tasks: m.tasks.filter(t => t.id !== taskId) } : m));
       alert(`Database rejected assignment: ${error.message}`);
     } else {
-      // Notification Logic: Notify AAN if the recipient is AAN and user is Lead/Boss
-      if (memberId.toUpperCase() === "AAN" && isBossOrLead) {
+      // DYNAMIC NOTIFICATION: Notify recipient if it's not the current user
+      if (recipient !== user.initial?.toUpperCase()) {
         sendTaskNotification(
-          "AAN",
-          "New Task Assigned!",
-          `${user.initial} assigned: ${description}`
+          recipient, 
+          `${user.initial} assigned a task: ${description}`,
+          deadline
         );
       }
     }
   }
 
-  // 2. Handle Edit Task (With Push Logic)
+  // 2. Handle Edit Task (Dynamic Notification for any Member)
   async function handleEditTask(task: Task, description: string, deadline: string | null) {
     if (!isLead) {
       alert("Unauthorized: Only the Team Lead can modify task details.");
@@ -119,21 +111,14 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
       alert(`Update failed: ${error.message}`);
       window.location.reload(); 
     } else if (data) {
-      setMembers(prev => prev.map(m => ({
-        ...m, 
-        tasks: m.tasks.map(t => t.id === task.id ? { 
-          ...t, 
-          description: data.task_desc, 
-          deadline: data.deadline, 
-          edit_count: data.edit_count 
-        } : t)
-      })));
-
-      if (task.assigned_to?.toUpperCase() === "AAN") {
+      const recipient = task.assigned_to?.toUpperCase();
+      
+      // DYNAMIC NOTIFICATION: Notify owner of the change
+      if (recipient && recipient !== user.initial?.toUpperCase()) {
         sendTaskNotification(
-          "AAN",
-          "Task Details Updated",
-          `Your task "${description}" was modified by the Lead.`
+          recipient,
+          `Task Details Updated: ${description}`,
+          deadline
         );
       }
     }
@@ -159,17 +144,10 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
       return;
     }
 
-    setMembers(prev => prev.map(m => ({
-      ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t)
-    })));
-
-    const dbStatusValue = toDbStatus(newStatus);
-    
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from("tasks")
-      .update({ status: dbStatusValue })
-      .eq("tasks", taskId)
-      .select();
+      .update({ status: toDbStatus(newStatus) })
+      .eq("tasks", taskId);
 
     if (error) {
       alert(`Sync Failed: ${error.message}`);
@@ -177,29 +155,20 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
-  // 4. Delete/Move
+  // 4. Delete & Move Logic
   async function handleDeleteTask(taskId: string) {
     if (!isLead) return;
-    setMembers(prev => prev.map(m => ({ ...m, tasks: m.tasks.filter(t => t.id !== taskId) })));
     const { error } = await supabase.from("tasks").delete().eq("tasks", taskId);
-    if (error) {
-      alert(`Delete failed: ${error.message}`);
-      window.location.reload();
-    }
+    if (error) alert(`Delete failed: ${error.message}`);
   }
 
   async function handleMoveTask(taskId: string, toMemberId: string) {
     if (!isBossOrLead) return;
-    setMembers(prev => {
-      const source = prev.find(m => m.tasks.some(t => t.id === taskId));
-      const task = source?.tasks.find(t => t.id === taskId);
-      if (!task) return prev;
-      return prev.map(m => {
-        if (m.id === toMemberId) return { ...m, tasks: [...m.tasks, { ...task, assigned_to: toMemberId }] };
-        return { ...m, tasks: m.tasks.filter(t => t.id !== taskId) };
-      });
-    });
-    await supabase.from("tasks").update({ assigned_to: toMemberId }).eq("tasks", taskId);
+    const { error } = await supabase
+      .from("tasks")
+      .update({ assigned_to: toMemberId.toUpperCase() })
+      .eq("tasks", taskId);
+    if (error) alert(`Move failed: ${error.message}`);
   }
 
   return (
@@ -219,71 +188,85 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   );
 }
 
-// ─── Outer Shell ─────────────────────────────────────────────────────────────
+// ─── Outer Shell — Data & Realtime Synchronization ────────────────────────────
 function BoardPage() {
   const { user, logout } = useAuth();
   const [members, setMembers] = useState<TeamMember[]>([]);
-  const [membersLoading, setMembersLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    if (!user) return;
+  // Centralized data fetcher
+  const fetchData = useCallback(async () => {
+    if (!user || !isSupabaseConfigured) return;
+    
+    try {
+      const { data: userData, error: userError } = await supabase
+        .from("users")
+        .select("users, sl")
+        .eq("role", "member")
+        .order("sl", { ascending: true });
 
-    async function fetchData() {
-      setMembersLoading(true);
-      try {
-        if (!isSupabaseConfigured) return;
+      if (userError) throw userError;
 
-        const { data: userData, error: userError } = await supabase
-          .from("users")
-          .select("users, sl")
-          .eq("role", "member")
-          .order("sl", { ascending: true });
+      const { data: tasksData, error: tasksError } = await supabase
+        .from("tasks")
+        .select("*");
 
-        if (userError) throw userError;
+      if (tasksError) throw tasksError;
 
-        const { data: tasksData, error: tasksError } = await supabase
-          .from("tasks")
-          .select("*");
+      const today = new Date().toISOString().split("T")[0];
 
-        if (tasksError) throw tasksError;
+      const teamMembers: TeamMember[] = (userData ?? []).map((row: any) => ({
+        id: row.users,
+        initial: row.users,
+        tasks: (tasksData ?? [])
+          .filter((t: any) => t.assigned_to?.toUpperCase() === row.users?.toUpperCase())
+          .map((t: any) => ({
+            id: t.tasks,
+            description: t.task_desc,
+            isOverdue: t.deadline && t.deadline < today && t.status !== "completed",
+            created_at: t.created_at,
+            updated_at: t.created_at,
+            status: fromDbStatus(t.status),
+            deadline: t.deadline,
+            assigned_to: t.assigned_to,
+            edit_count: t.edit_count || 0,
+            priority: 0,
+          })),
+      }));
 
-        const today = new Date().toISOString().split("T")[0];
-
-        const teamMembers: TeamMember[] = (userData ?? []).map((row: any) => ({
-          id: row.users,
-          initial: row.users,
-          tasks: (tasksData ?? [])
-            .filter((t: any) => t.assigned_to?.toUpperCase() === row.users?.toUpperCase())
-            .map((t: any) => ({
-              id: t.tasks,
-              description: t.task_desc,
-              isOverdue: t.deadline && t.deadline < today && t.status !== "completed",
-              created_at: t.created_at,
-              updated_at: t.created_at,
-              status: fromDbStatus(t.status),
-              deadline: t.deadline,
-              assigned_to: t.assigned_to,
-              edit_count: t.edit_count || 0,
-              priority: 0,
-            })),
-        }));
-
-        setMembers(teamMembers);
-      } catch (err: any) {
-        console.error("[TaskFlow] Init failed:", err.message);
-      } finally {
-        setMembersLoading(false);
-      }
+      setMembers(teamMembers);
+    } catch (err: any) {
+      console.error("[TaskFlow] Init failed:", err.message);
+    } finally {
+      setLoading(false);
     }
-    fetchData();
   }, [user]);
 
+  // Realtime Subscription: Refresh UI whenever 'tasks' table changes
+  useEffect(() => {
+    if (!user) return;
+    fetchData();
+
+    const channel = supabase
+      .channel("board-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "tasks" },
+        () => fetchData()
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, fetchData]);
+
   if (!user) return <AuthModal />;
-  if (membersLoading) return <LoadingScreen />;
+  if (loading) return <LoadingScreen />;
 
   return (
-    // FIX: Passing user.initial instead of user.id to match the DB column
-    <PushProvider userId={user.initial}>
+    // Pass user.initial (e.g., "AAN") to match the DB column exactly
+    <PushProvider userId={user.initial.toUpperCase()}>
       <BoardShell user={user} logout={logout} members={members} setMembers={setMembers} />
     </PushProvider>
   );
