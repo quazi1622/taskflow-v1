@@ -35,8 +35,8 @@ self.addEventListener("push", (event) => {
 
   const options = {
     body: body || "You have a new task update.",
-    icon: icon || "/icon-192x192.png", // Ensure this exists in your public folder
-    badge: "/icon-192x192.png",       // Small monochrome icon for status bar
+    icon: icon || "/icon-192.png", // Ensure this exists in your public folder
+    badge: "/icon-192.png",       // Small monochrome icon for status bar
     vibrate: [200, 100, 200],         // Pattern: Vibration, Pause, Vibration
     tag: "taskflow-notif",            // Groups notifications so they don't stack infinitely
     renotify: true,                   // Alert even if a previous notification is still visible
