@@ -9,10 +9,9 @@ import { Task, TeamMember, TaskStatus } from "@/lib/types";
 import { supabase, isSupabaseConfigured } from "@/lib/supabase";
 
 // ─── Status mapping to match Supabase Check Constraint ──────────────────────
-// Maps internal TaskStatus to DB: 'assigned', 'in progress', 'completed'
 function toDbStatus(status: TaskStatus): string {
   if (status === "done") return "completed";
-  if (status === "in_progress") return "in progress"; // Exact match for your ARRAY check
+  if (status === "in_progress") return "in progress";
   return "assigned";
 }
 
@@ -85,32 +84,50 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
-  // 2. Handle Edit Task
+  // 2. Handle Edit Task (REVISED: Using DB Trigger logic)
   async function handleEditTask(task: Task, description: string, deadline: string | null) {
     if (!isLead) {
       alert("Unauthorized: Only the Team Lead can modify task details.");
       return;
     }
+
+    // Frontend safety check (Mirroring DB constraint)
     if (task.edit_count >= 2) {
       alert("Restriction: This task has already been edited twice.");
       return;
     }
 
-    const newEditCount = (task.edit_count || 0) + 1;
-    setMembers(prev => prev.map(m => ({
-      ...m, tasks: m.tasks.map(t => t.id === task.id ? { ...t, description, deadline, edit_count: newEditCount } : t)
-    })));
+    // We don't increment locally anymore. We send the update and let the DB Trigger handle it.
+    const { data, error } = await supabase
+      .from("tasks")
+      .update({
+        task_desc: description,
+        deadline: deadline ? deadline.split("T")[0] : null,
+      })
+      .eq("tasks", task.id)
+      .select()
+      .single();
 
-    const { error } = await supabase.from("tasks").update({
-      task_desc: description,
-      deadline: deadline ? deadline.split("T")[0] : null,
-      edit_count: newEditCount,
-    }).eq("tasks", task.id);
-
-    if (error) alert(`Update failed: ${error.message}`);
+    if (error) {
+      console.error("[TaskFlow] Edit Error:", error.message);
+      alert(`Update failed: ${error.message}`);
+      // Reload if we get a constraint error to ensure state is accurate
+      window.location.reload(); 
+    } else if (data) {
+      // Sync local state with the new values returned from the DB (including the triggered edit_count)
+      setMembers(prev => prev.map(m => ({
+        ...m, 
+        tasks: m.tasks.map(t => t.id === task.id ? { 
+          ...t, 
+          description: data.task_desc, 
+          deadline: data.deadline, 
+          edit_count: data.edit_count 
+        } : t)
+      })));
+    }
   }
 
-  // 3. Handle Status Change (REVISED: Robust Identity Check + Sync Debugging)
+  // 3. Handle Status Change
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     if (isLead) {
       alert("Unauthorized: Team Leads cannot modify task status.");
@@ -122,7 +139,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
 
     if (!targetTask) return;
 
-    // --- IDENTITY CHECK ---
     const myInitial = user.initial?.trim().toUpperCase();
     const taskAssignedTo = targetTask.assigned_to?.trim().toUpperCase();
 
@@ -131,30 +147,24 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
       return;
     }
 
-    // Optimistic UI Update
     setMembers(prev => prev.map(m => ({
       ...m, tasks: m.tasks.map(t => t.id === taskId ? { ...t, status: newStatus } : t)
     })));
 
-    // Backend Sync with specific Response verification
     const dbStatusValue = toDbStatus(newStatus);
     
-    const { data, error, status } = await supabase
+    const { data, error } = await supabase
       .from("tasks")
       .update({ status: dbStatusValue })
-      .eq("tasks", taskId) // Matches UUID column
+      .eq("tasks", taskId)
       .select();
 
     if (error) {
-      console.error("[TaskFlow] Sync Error:", error.message);
       alert(`Sync Failed: ${error.message}`);
-      window.location.reload(); // Revert UI
-    } else if (!data || data.length === 0) {
-      // This case triggers if ID matches but RLS blocks the update
-      alert("PERMISSION DENIED: Supabase RLS blocked the update. You don't have permission to write to this task.");
       window.location.reload();
-    } else {
-      console.log(`[TaskFlow] Successfully updated task ${taskId} to ${dbStatusValue}`);
+    } else if (!data || data.length === 0) {
+      alert("PERMISSION DENIED: Supabase RLS blocked the update.");
+      window.location.reload();
     }
   }
 
