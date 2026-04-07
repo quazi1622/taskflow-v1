@@ -1,56 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// Initialize Supabase with Service Role to bypass RLS for this background task
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY! // MUST use Service Role Key
 );
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { userId, subscription } = body;
+    const { userId, subscription } = await req.json();
 
-    // 1. Basic Validation
-    if (!userId || !subscription) {
-      return NextResponse.json({ error: "Missing userId or subscription object" }, { status: 400 });
-    }
+    // userId must be "AAN", "NZZ", etc.
+    const cleanId = userId?.trim().toUpperCase();
 
-    // 2. The "Initials" Plumbing
-    // Since your DB uses "AAN" (all caps), we sanitize the input to ensure a match.
-    const sanitizedUserId = userId.trim().toUpperCase();
+    console.log(`[Push API] Attempting update for user: ${cleanId}`);
 
-    // 3. Perform the Update
-    // We add .select() so we can verify if a row was actually found and changed.
     const { data, error } = await supabase
       .from("users")
-      .update({ 
-        push_subscription: subscription,
-        // Optional: updated_at: new Date().toISOString() 
-      })
-      .eq("users", sanitizedUserId)
+      .update({ push_subscription: subscription }) 
+      .eq("users", cleanId) // Matches your 'users' column initials
       .select();
 
-    if (error) {
-      console.error("[Push API] Database Error:", error.message);
-      return NextResponse.json({ error: error.message }, { status: 500 });
-    }
+    if (error) throw error;
 
-    // 4. Check for Silent Failures (The most common issue)
-    // If data is empty, it means 'sanitizedUserId' didn't exist in the 'users' column.
     if (!data || data.length === 0) {
-      console.warn(`[Push API] No user found matching initials: "${sanitizedUserId}"`);
-      return NextResponse.json({ 
-        error: "User not found. Ensure your initials match the database exactly." 
-      }, { status: 404 });
+      console.error(`[Push API] User "${cleanId}" not found in database.`);
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    console.log(`[Push API] Subscription saved successfully for ${sanitizedUserId}`);
+    console.log(`[Push API] Success! JSON saved for ${cleanId}`);
     return NextResponse.json({ ok: true });
 
-  } catch (err) {
-    console.error("[Push API] Request Error:", err);
-    return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
+  } catch (err: any) {
+    console.error("[Push API] Internal Error:", err.message);
+    return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
