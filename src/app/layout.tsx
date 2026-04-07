@@ -2,6 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Barlow, Barlow_Condensed } from "next/font/google";
 import "./globals.css";
 
+// Path based on your TypeScript error: src/components/pwa/PushProvider.tsx
+import { PushProvider } from "@/components/pwa/PushProvider";
+
 const barlow = Barlow({
   variable: "--font-barlow",
   subsets: ["latin"],
@@ -38,12 +41,24 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  
+  /**
+   * FIX: The PushProvider requires a 'userId' prop to link the 
+   * subscription to the correct Supabase row (e.g., "AAN" or "NZZ").
+   * Replace the string below with your actual session-fetching logic.
+   */
+  const currentUserId = "AAN"; 
+
   return (
     <html
       lang="en"
       className={`${barlow.variable} ${barlowCondensed.variable} h-full`}
     >
-      <body className="h-full antialiased">{children}</body>
+      <body className="h-full antialiased">
+        <PushProvider userId={currentUserId}>
+          {children}
+        </PushProvider>
+      </body>
     </html>
   );
 }
