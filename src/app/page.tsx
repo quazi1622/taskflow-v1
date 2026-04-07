@@ -51,7 +51,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   const isMember = user.role === "member";
   const isBossOrLead = isBoss || isLead;
 
-  // 1. Handle Assign Task
+  // 1. Handle Assign Task (With Push Logic)
   async function handleAssignTask(memberId: string, description: string, deadline: string | null) {
     if (!isBossOrLead) return;
 
@@ -81,23 +81,30 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     if (error) {
       setMembers(prev => prev.map(m => m.id === memberId ? { ...m, tasks: m.tasks.filter(t => t.id !== taskId) } : m));
       alert(`Database rejected assignment: ${error.message}`);
+    } else {
+      // Trigger Notification if Lead assigns to AAN
+      if (isLead && memberId.toUpperCase() === "AAN") {
+        sendTaskNotification(
+          "AAN",
+          "New Task Assigned!",
+          `Lead ${user.initial} assigned: ${description}`
+        );
+      }
     }
   }
 
-  // 2. Handle Edit Task (REVISED: Using DB Trigger logic)
+  // 2. Handle Edit Task (With Push Logic)
   async function handleEditTask(task: Task, description: string, deadline: string | null) {
     if (!isLead) {
       alert("Unauthorized: Only the Team Lead can modify task details.");
       return;
     }
 
-    // Frontend safety check (Mirroring DB constraint)
     if (task.edit_count >= 2) {
       alert("Restriction: This task has already been edited twice.");
       return;
     }
 
-    // We don't increment locally anymore. We send the update and let the DB Trigger handle it.
     const { data, error } = await supabase
       .from("tasks")
       .update({
@@ -111,10 +118,8 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     if (error) {
       console.error("[TaskFlow] Edit Error:", error.message);
       alert(`Update failed: ${error.message}`);
-      // Reload if we get a constraint error to ensure state is accurate
       window.location.reload(); 
     } else if (data) {
-      // Sync local state with the new values returned from the DB (including the triggered edit_count)
       setMembers(prev => prev.map(m => ({
         ...m, 
         tasks: m.tasks.map(t => t.id === task.id ? { 
@@ -124,6 +129,15 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
           edit_count: data.edit_count 
         } : t)
       })));
+
+      // Trigger Notification if Lead edits AAN's task
+      if (task.assigned_to?.toUpperCase() === "AAN") {
+        sendTaskNotification(
+          "AAN",
+          "Task Details Updated",
+          `Your task "${description}" was modified by the Lead.`
+        );
+      }
     }
   }
 
@@ -161,9 +175,6 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
 
     if (error) {
       alert(`Sync Failed: ${error.message}`);
-      window.location.reload();
-    } else if (!data || data.length === 0) {
-      alert("PERMISSION DENIED: Supabase RLS blocked the update.");
       window.location.reload();
     }
   }
