@@ -1,154 +1,125 @@
 @import "tailwindcss";
 
-/* ─── NFS Heat / Unbound Design Tokens ─────────────────────────────────── */
+/* ─── Crystal Flow Theme Tokens ────────────────────────────────────────── */
 @theme {
-  /* Colors */
-  --color-nfs-black:  #0a0a0f;
-  --color-nfs-dark:   #12121a;
-  --color-nfs-panel:  #1a1a28;
-  --color-nfs-card:   #1e1e2e;
-  --color-nfs-border: #2a2a3d;
-  --color-nfs-orange: #FF6B00;
-  --color-nfs-cyan:   #00D4FF;
-  --color-nfs-green:  #00FF87;
-  --color-nfs-red:    #FF2D55;
-  --color-nfs-text:   #e0e0f0;
-  --color-nfs-muted:  #6b6b8a;
-
-  /* Typography */
-  --font-display: "Barlow Condensed", sans-serif;
-  --font-body:    "Barlow", sans-serif;
+  --color-crystal-bg: #0b0f1a;
+  --color-crystal-card: rgba(255, 255, 255, 0.05);
+  --color-prism-cyan: #22d3ee;
+  --color-prism-purple: #c084fc;
+  --color-prism-mint: #34d399;
+  --color-prism-rose: #fb7185;
+  
+  --font-display: "Inter", sans-serif;
+  --font-body: "Outfit", sans-serif;
 }
 
 /* ─── Base Reset ────────────────────────────────────────────────────────── */
 :root {
-  --background: #0a0a0f;
-  --foreground: #e0e0f0;
+  --background: #0b0f1a;
+  --foreground: #f0f9ff;
 }
 
-html,
 body {
-  height: 100%;
-  background-color: var(--background);
+  /* Subtle Prismatic Background Gradient */
+  background: 
+    radial-gradient(circle at 20% 30%, rgba(34, 211, 238, 0.1) 0%, transparent 40%), 
+    radial-gradient(circle at 80% 70%, rgba(192, 132, 252, 0.1) 0%, transparent 40%), 
+    #0b0f1a;
   color: var(--foreground);
-  font-family: "Barlow", sans-serif;
+  font-family: "Outfit", sans-serif;
+  min-height: 100vh;
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Custom Scrollbar ──────────────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 4px;
-  height: 4px;
-}
-::-webkit-scrollbar-track {
-  background: #12121a;
-}
-::-webkit-scrollbar-thumb {
-  background: #FF6B00;
-  border-radius: 2px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #ff8c33;
-}
-
-/* ─── Neon Glow Utilities ───────────────────────────────────────────────── */
-.neon-glow-orange {
-  box-shadow:
-    0 0 6px rgba(255, 107, 0, 0.6),
-    0 0 20px rgba(255, 107, 0, 0.3),
-    0 0 40px rgba(255, 107, 0, 0.1);
-}
-
-.neon-glow-cyan {
-  box-shadow:
-    0 0 6px rgba(0, 212, 255, 0.6),
-    0 0 20px rgba(0, 212, 255, 0.3),
-    0 0 40px rgba(0, 212, 255, 0.1);
-}
-
-.neon-border-orange {
-  border-color: #FF6B00;
-  box-shadow: 0 0 8px rgba(255, 107, 0, 0.4), inset 0 0 8px rgba(255, 107, 0, 0.05);
-}
-
-.neon-border-cyan {
-  border-color: #00D4FF;
-  box-shadow: 0 0 8px rgba(0, 212, 255, 0.4), inset 0 0 8px rgba(0, 212, 255, 0.05);
-}
-
-/* ─── Glassmorphism Panel ───────────────────────────────────────────────── */
-.glass-panel {
-  background: rgba(26, 26, 40, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(42, 42, 61, 0.8);
-}
-
-/* ─── Speed Lines Background ────────────────────────────────────────────── */
-.speed-lines {
-  background-image: repeating-linear-gradient(
-    -55deg,
-    transparent,
-    transparent 2px,
-    rgba(255, 107, 0, 0.015) 2px,
-    rgba(255, 107, 0, 0.015) 4px
+/* ─── Chiseled Crystalline Panel ───────────────────────────────────────── */
+.crystal-panel {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px) saturate(120%);
+  -webkit-backdrop-filter: blur(20px) saturate(120%);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 
+    inset 0 0 15px rgba(255, 255, 255, 0.05), 
+    0 10px 30px rgba(0, 0, 0, 0.5);
+  
+  /* The "Gemstone" Chiseled Edge */
+  clip-path: polygon(
+    15px 0%, 
+    calc(100% - 15px) 0%, 
+    100% 15px, 
+    100% calc(100% - 15px), 
+    calc(100% - 15px) 100%, 
+    15px 100%, 
+    0% calc(100% - 15px), 
+    0% 15px
   );
 }
 
-/* ─── Shake Animation (auth error) ─────────────────────────────────────── */
-@keyframes shake {
-  0%, 100% { transform: translateX(0); }
-  15%       { transform: translateX(-8px); }
-  30%       { transform: translateX(8px); }
-  45%       { transform: translateX(-6px); }
-  60%       { transform: translateX(6px); }
-  75%       { transform: translateX(-4px); }
-  90%       { transform: translateX(4px); }
+/* ─── Crystal Card Style ───────────────────────────────────────────────── */
+.crystal-card {
+  background: var(--color-crystal-card);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  clip-path: polygon(0% 0%, 97% 0%, 100% 10%, 100% 100%, 3% 100%, 0% 90%);
+  transition: transform 0.3s ease, border-color 0.3s ease;
 }
 
-.shake {
-  animation: shake 0.5s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+.crystal-card:hover {
+  border-color: var(--color-prism-cyan);
+  transform: translateY(-2px);
 }
 
-/* ─── Slide-Up Fade-In (modal entry) ───────────────────────────────────── */
-@keyframes slideUpFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(24px);
+/* ─── Animations ───────────────────────────────────────────────────────── */
+
+/* Card Entry Animation */
+@keyframes crystallize {
+  from { 
+    opacity: 0; 
+    transform: scale(0.95) translateY(10px); 
+    filter: blur(10px); 
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-.slide-up {
-  animation: slideUpFadeIn 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
-}
-
-/* ─── Sweep-In (card reveal) ───────────────────────────────────────────── */
-@keyframes sweepIn {
-  from {
-    opacity: 0;
-    transform: translateX(-16px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
+  to { 
+    opacity: 1; 
+    transform: scale(1) translateY(0); 
+    filter: blur(0); 
   }
 }
 
-.sweep-in {
-  animation: sweepIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+.animate-crystallize {
+  animation: crystallize 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-/* ─── Pulse Glow (status badge) ────────────────────────────────────────── */
-@keyframes pulseGlow {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.6; }
+/* Hover Glint Shine Effect */
+.hover-glint {
+  position: relative;
+  overflow: hidden;
 }
 
-.pulse-glow {
-  animation: pulseGlow 2s ease-in-out infinite;
+.hover-glint::after {
+  content: "";
+  position: absolute;
+  top: -50%;
+  left: -100%;
+  width: 50%;
+  height: 200%;
+  background: linear-gradient(
+    to right, 
+    transparent, 
+    rgba(255, 255, 255, 0.2), 
+    transparent
+  );
+  transform: rotate(35deg);
+  transition: 0.6s;
+}
+
+.hover-glint:hover::after {
+  left: 150%;
+}
+
+/* Pulse for Status Indicators */
+@keyframes pulse-prism {
+  0%, 100% { box-shadow: 0 0 0px rgba(34, 211, 238, 0); }
+  50% { box-shadow: 0 0 15px rgba(34, 211, 238, 0.5); }
+}
+
+.status-pulse {
+  animation: pulse-prism 2s infinite;
 }

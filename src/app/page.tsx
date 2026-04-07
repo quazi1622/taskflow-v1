@@ -29,32 +29,53 @@ function PushToggle() {
   return (
     <div className="fixed bottom-6 right-6 z-[9999]">
       <div 
-        className="glass-panel p-3 rounded-xl border flex flex-col gap-2 min-w-[150px] backdrop-blur-md"
+        className="glass-panel p-3 rounded-xl border flex flex-col gap-3 min-w-[190px] backdrop-blur-xl transition-all duration-500"
         style={{
-          background: "rgba(10, 10, 15, 0.9)",
-          borderColor: isBlocked ? "rgba(255, 0, 0, 0.3)" : "rgba(0, 212, 255, 0.3)",
-          boxShadow: isSubscribed ? "0 0 20px rgba(0, 212, 255, 0.1)" : "none"
+          background: "rgba(10, 10, 15, 0.95)",
+          borderColor: isBlocked ? "#FF6B00" : "#00D4FF",
+          boxShadow: isSubscribed ? "0 0 30px rgba(0, 212, 255, 0.15)" : "none"
         }}
       >
-        <div className="flex flex-col">
-          <span className="text-[9px] font-black uppercase text-[#6b6b8a] tracking-[0.15em]">
-            System Alerts
-          </span>
-          <span className={`text-[10px] font-bold uppercase tracking-wider ${isSubscribed ? 'text-[#00D4FF]' : 'text-white/30'}`}>
-            {isBlocked ? "Blocked by Browser" : isSubscribed ? "Active" : "Disabled"}
-          </span>
+        <div className="flex justify-between items-center">
+          <div className="flex flex-col">
+            <span className="text-[9px] font-black uppercase text-[#6b6b8a] tracking-[0.2em]">
+              Alert Engine
+            </span>
+            <span className={`text-[10px] font-bold uppercase tracking-widest ${
+              isBlocked ? 'text-[#FF6B00]' : isSubscribed ? 'text-[#00D4FF]' : 'text-white/20'
+            }`}>
+              {isBlocked ? "System Locked" : isSubscribed ? "Online" : "Standby"}
+            </span>
+          </div>
+          <div className={`w-2 h-2 rounded-full ${isSubscribed ? 'bg-[#00D4FF] shadow-[0_0_10px_#00D4FF]' : 'bg-white/10'}`} />
         </div>
 
-        {!isBlocked && (
+        {isBlocked ? (
+          /* BLOCKED STATE: Guide the user to the Lock Icon */
+          <div className="bg-[#FF6B00]/10 p-2.5 rounded-lg border border-[#FF6B00]/30 animate-pulse">
+            <p className="text-[9px] text-[#FF6B00] font-black uppercase leading-tight">
+              Action Required
+            </p>
+            <p className="text-[8px] text-white/70 uppercase mt-1 leading-normal font-medium">
+              The browser is blocking alerts. Click the <span className="text-white font-bold">Lock 🔒</span> in your URL bar to "Allow" notifications.
+            </p>
+          </div>
+        ) : (
+          /* FUNCTIONAL STATE: The Toggle */
           <button
             onClick={isSubscribed ? disablePush : enablePush}
-            className={`w-full h-7 rounded-lg border text-[9px] font-black uppercase tracking-[0.2em] transition-all duration-300 active:scale-95 ${
+            className={`group flex items-center justify-between px-3 py-2.5 rounded-lg border transition-all duration-300 active:scale-95 ${
               isSubscribed 
-                ? 'bg-[#00D4FF]/10 border-[#00D4FF] text-[#00D4FF] shadow-[0_0_10px_rgba(0,212,255,0.2)]' 
-                : 'bg-white/5 border-white/10 text-white/40'
+                ? 'bg-[#00D4FF]/10 border-[#00D4FF] text-[#00D4FF]' 
+                : 'bg-white/5 border-white/10 text-white/40 hover:border-white/30 hover:text-white'
             }`}
           >
-            {isSubscribed ? "Mute" : "Enable"}
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+              {isSubscribed ? "Active" : "Initialize"}
+            </span>
+            <div className={`w-7 h-3.5 rounded-full relative transition-colors ${isSubscribed ? 'bg-[#00D4FF]' : 'bg-white/20'}`}>
+               <div className={`absolute top-0.5 w-2.5 h-2.5 rounded-full bg-white transition-all duration-300 ${isSubscribed ? 'left-4' : 'left-0.5'}`} />
+            </div>
           </button>
         )}
       </div>
@@ -62,16 +83,15 @@ function PushToggle() {
   );
 }
 
-// ─── Loading Screen UI ──────────────────────────────────────────────────────
 function LoadingScreen() {
   return (
     <div className="fixed inset-0 flex flex-col items-center justify-center bg-[#0a0a0f] z-[9999]">
-      <div className="flex items-center gap-3 mb-6">
+      <div className="flex items-center gap-3 mb-6 animate-pulse">
         <div className="w-1.5 h-7 bg-[#FF6B00] shadow-[0_0_8px_#FF6B00] rounded-sm" />
         <span className="text-3xl font-black uppercase tracking-widest text-[#FF6B00]">TASKFLOW</span>
         <div className="w-1.5 h-7 bg-[#00D4FF] shadow-[0_0_8px_#00D4FF] rounded-sm" />
       </div>
-      <span className="text-xs uppercase tracking-widest text-[#6b6b8a] animate-pulse">Verifying session...</span>
+      <span className="text-xs uppercase tracking-widest text-[#6b6b8a] animate-pulse">Verifying secure session...</span>
     </div>
   );
 }
@@ -92,7 +112,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
   const isMember = user.role === "member";
   const isBossOrLead = isBoss || isLead;
 
-  // 1. Handle Assign Task (With Push Notification)
+  // 1. Handle Assign Task
   async function handleAssignTask(memberId: string, description: string, deadline: string | null) {
     if (!isBossOrLead) return;
 
@@ -125,7 +145,7 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     }
   }
 
-  // 2. Handle Edit Task (With Lead Check & Edit Count restriction)
+  // 2. Handle Edit Task
   async function handleEditTask(task: Task, description: string, deadline: string | null) {
     if (!isLead) {
       alert("Unauthorized: Only the Team Lead can modify task details.");
@@ -153,12 +173,12 @@ function BoardShell({ user, logout, members, setMembers }: BoardShellProps) {
     } else if (data) {
       const recipient = task.assigned_to?.toUpperCase();
       if (recipient && recipient !== user.initial?.toUpperCase()) {
-        sendTaskNotification(recipient, `Task Updated: ${description}`, deadline);
+        sendTaskNotification(recipient, `Task Details Updated: ${description}`, deadline);
       }
     }
   }
 
-  // 3. Handle Status Change (With Ownership Verification)
+  // 3. Handle Status Change
   async function handleStatusChange(taskId: string, newStatus: TaskStatus) {
     if (isLead) {
       alert("Unauthorized: Team Leads cannot modify task status.");
@@ -232,6 +252,7 @@ function BoardPage() {
 
   const fetchData = useCallback(async () => {
     if (!user || !isSupabaseConfigured) return;
+    
     try {
       const { data: userData, error: userError } = await supabase
         .from("users")
@@ -256,12 +277,12 @@ function BoardPage() {
             description: t.task_desc,
             isOverdue: t.deadline && t.deadline < today && t.status !== "completed",
             created_at: t.created_at,
-            updated_at: t.created_at,
+            updated_at: t.created_at, // restored
             status: fromDbStatus(t.status),
             deadline: t.deadline,
             assigned_to: t.assigned_to,
             edit_count: t.edit_count || 0,
-            priority: 0,
+            priority: 0, // restored
           })),
       }));
 
@@ -276,8 +297,12 @@ function BoardPage() {
   useEffect(() => {
     if (!user) return;
     fetchData();
-    const channel = supabase.channel("board-realtime").on("postgres_changes", 
-      { event: "*", schema: "public", table: "tasks" }, fetchData).subscribe();
+
+    const channel = supabase
+      .channel("board-realtime")
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks" }, fetchData)
+      .subscribe();
+
     return () => { supabase.removeChannel(channel); };
   }, [user, fetchData]);
 
